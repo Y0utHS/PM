@@ -1,0 +1,378 @@
+# -*- coding: utf-8 -*-
+# my_debugger_defines.py
+
+from socket import *
+from my_debugger_defines import *
+import sys, time, threading
+import struct
+import ctypes
+import traceback
+import io
+
+
+try:
+    from pydbg import *
+    from pydbg.defines import *
+    from utils import hooking
+except:
+    print("ERROR: you need pydbg and utils.hooking from PAIMEI.")
+    sys.exit(-1)
+
+Proc = None
+
+def get_time():
+    now = time.localtime()
+    s = "%04d-%02d-%02d %02d:%02d:%02d" % (now.tm_year, now.tm_mon, now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec)
+    return s
+
+class crypt_pydbg(pydbg):
+    #W / A 구분 함수
+    def get_string(self, mode, key):
+        if key == 0 :
+            return "NULL"
+        string = ""
+        i = 0
+        if mode == "A" or mode == None:
+            while 1:
+                if ord(self.read_process_memory(key+i, 1)) == 0:
+                    break
+                else:
+                    string += self.read_process_memory(key+i, 1)
+                    i = i + 1
+        elif mode == "W":
+            while 1:
+                if ord(self.read_process_memory(key+i, 1)) == 0 and ord(self.read_process_memory(key+i+1, 1)) == 0:
+                    break
+                else:
+                    string += self.read_process_memory(key+i, 1)
+                    i = i + 2
+        return string
+        
+    def get_provtype(self, provtype):
+        if provtype == 1:
+            return "PROV_RSA_FULL"
+        elif provtype == 24 :
+            return "PROV_RSA_AES"
+        elif provtype == 2 :
+            return "PROV_RSA_SIG" 
+        elif provtype == 12 :
+            return "PROV_RSA_SCHANNEL" 
+        elif provtype == 3 :
+            return "PROV_DSS" 
+        elif provtype == 13 :
+            return "PROV_DSS_DH"
+        elif provtype == 18 :
+            return "PROV_DH_SCHANNEL"
+        elif provtype == 4 :
+            return "PROV_FORTEZZA"
+        elif provtype == 5 :
+            return "PROV_MS_EXCHANGE"
+        elif provtype == 6 :
+            return "PROV_SSL"  
+
+
+    def get_algorithm(self, algID):
+        if algID == 0x00006603:
+            return "CALG_3DES"
+        elif algID == 0x00006609:
+            return "CALG_3DES_112"
+        elif algID == 0x00006611:
+            return "CALG_AES"
+        elif algID == 0x0000660e:
+            return "CALG_AES_128"
+        elif algID == 0x0000660f:
+            return "CALG_AES_192"
+        elif algID == 0x00006610:
+            return "CALG_AES_256"
+        elif algID == 0x0000aa03:
+            return "CALG_AGREEDKEY_ANY"
+        elif algID == 0x0000660c:
+            return "CALG_CYLINK_MEK"
+        elif algID == 0x00006601:
+            return "CALG_DES"
+        elif algID == 0x00006604:
+            return "CALG_DESX"
+        elif algID == 0x0000aa02:
+            return "CALG_DH_EPHEM"
+        elif algID == 0x0000aa01:
+            return "CALG_DH_SF"
+        elif algID == 0x00002200:
+            return "CALG_DSS_SIGN"
+        elif algID == 0x0000aa05:
+            return "CALG_ECDH"
+        elif algID == 0x0000ae06:
+            return "CALG_ECDSA"
+        elif algID == 0x00002203:
+            return "CALG_ECMQV"
+        elif algID == 0x0000800b:
+            return "CALG_HASH_REPLACE_OWF"
+        elif algID == 0x0000a003:
+            return "CALG_HUGHES_MD5"
+        elif algID == 0x00008009:
+            return "CALG_HMAC"
+        elif algID == 0x0000aa04:
+            return "CALG_KEA_KEYX"
+        elif algID == 0x00008005:
+            return "CALG_MAC"
+        elif algID == 0x00008001:
+            return "CALG_MD2"
+        elif algID == 0x00008002:
+            return "CALG_MD4"
+        elif algID == 0x00008003:
+            return "CALG_MD5"
+        elif algID == 0x00002000:
+            return "CALG_NO_SIGN"
+        elif algID == 0xffffffff:
+            return "CALG_OID_INFO_CNG_ONLY"
+        elif algID == 0xfffffffe:
+            return "CALG_OID_INFO_PARAMETERS"
+        elif algID == 0x00004c04:
+            return "CALG_PCT1_MASTER"
+        elif algID == 0x00006602:
+            return "CALG_RC2"
+        elif algID == 0x00006801:
+            return "CALG_RC4"
+        elif algID == 0x0000660d:
+            return "CALG_RC5"
+        elif algID == 0x0000a400:
+            return "CALG_RSA_KEYX"
+        elif algID == 0x00002400:
+            return "CALG_RSA_SIGN"
+        elif algID == 0x00004c07:
+            return "CALG_SCHANNEL_ENC_KEY"
+        elif algID == 0x00004c03:
+            return "CALG_SCHANNEL_MAC_KEY"
+        elif algID == 0x00004c02:
+            return "CALG_SCHANNEL_MASTER_HASH"
+        elif algID == 0x00006802:
+            return "CALG_SEAL"
+        elif algID == 0x00008004:
+            return "CALG_SHA"
+        elif algID == 0x00008004:
+            return "CALG_SHA1"
+        elif algID == 0x0000800c:
+            return "CALG_SHA_256"
+        elif algID == 0x0000800d:
+            return "CALG_SHA_384"
+        elif algID == 0x0000800e:
+            return "CALG_SHA_512"
+        elif algID == 0x0000660a:
+            return "CALG_SKIPJACK"
+        elif algID == 0x00004c05:
+            return "CALG_SSL2_MASTER"
+        elif algID == 0x00004c01:
+            return "CALG_SSL3_MASTER"
+        elif algID == 0x00008008:
+            return "CALG_SSL3_SHAMD5"
+        elif algID == 0x0000660b:
+            return "CALG_TEK"
+        elif algID == 0x00004c06:
+            return "CALG_TLS1_MASTER"
+        elif algID == 0x0000800a:
+            return "CALG_TLS1PRF"
+
+    def get_keyflag(self, flag):
+        if flag == 0x00000004 :
+            return "CRYPT_CREATE_SALT"
+        elif flag == 0x00004000:
+            return "CRYPT_ARCHIVABLE"
+        elif flag == 0x00000001:
+            return "CRYPT_EXPORTABLE"
+        elif flag == 0x00000200:
+            return "CRYPT_CREATE_IV"
+        elif flag == 0x00000800:
+            return "CRYPT_DATA_KEY"
+        elif flag == 0x00008000:
+            return "CRYPT_FORCE_KEY_PROTECTION_HIGH"
+        elif flag == 0x00000400:
+            return "CRYPT_KEK"
+        elif flag == 0x00000010:
+            return "CRYPT_NO_SALT"
+        elif flag == 0x00000080:
+            return "CRYPT_ONLINE"
+        elif flag == 0x00000040:
+            return "CRYPT_PREGEN"
+        elif flag == 0x00000100:
+            return "CRYPT_SF"
+        elif flag == 0x00000002:
+            return "CRYPT_USER_PROTECTED"
+        elif flag == 0x00001000:
+            return "CRYPT_VOLATILE"
+        else:
+            return "None or Complex"
+
+
+def hook_CryptAcquireContextA(dbg, args, ret):
+    print "[*] %s API : CryptAcquireContextA, CSP Handle : %x Provider : %s, Provider Type: %s, Return : 0x%x (Get CSP Key Container Handle) " %(get_time(), dbg.read_process_memory(args[0], 8), dbg.get_string('A', args[2]), dbg.get_provtype(args[3]), ret)
+    f.write("[*] %s API : CryptAcquireContextA, CSP Handle : %x Provider : %s, Provider Type: %s, Return : 0x%x (Get CSP Key Container Handle) \n" %(get_time(), dbg.read_process_memory(args[0], 8), dbg.get_string('A', args[2]), dbg.get_provtype(args[3]), ret))
+    return DBG_CONTINUE
+
+def hook_CryptAcquireContextW(dbg, args, ret):
+    print "[*] %s API : CryptAcquireContextA, Provider : %s, Provider Type: %s, Return : 0x%x (Get CSP Key Container Handle) " %(get_time(), dbg.get_string('W', args[2]), dbg.get_provtype(args[3]), ret)
+    f.write("[*] %s API : CryptAcquireContextA, Provider : %s, Provider Type: %s, Return : 0x%x (Get CSP Key Container Handle) \n" %(get_time(), dbg.get_string('W', args[2]), dbg.get_provtype(args[3]), ret))
+    return DBG_CONTINUE
+
+def hook_CryptCreateHash(dbg, args, ret):
+    print "[*] %s API : CryptCreateHash, CSPHandle : 0x%x, Algorithm : %s, Hash Handle : 0x%x Return : 0x%x (Get Hash Handle) " %(get_time(), args[0], dbg.get_algorithm(args[1]), args[4], ret)
+    f.write("[*] %s API : CryptCreateHash, CSPHandle : 0x%x, Algorithm : %s, Hash Handle : 0x%x Return : 0x%x (Get Hash Handle) \n" %(get_time(), args[0], dbg.get_algorithm(args[1]), args[4], ret))
+    return DBG_CONTINUE
+
+def hook_CryptHashData(dbg, args, ret):
+    print "[*] %s API : CryptHashData, HashData : %s, Length : %d  Return : 0x%x (Craete Hash Object) " %(get_time(), dbg.get_string('A',args[1]), args[2], ret)
+    f.write("[*] %s API : CryptHashData, HashData : %s, Length : %d  Return : 0x%x (Craete Hash Object) \n" %(get_time(), dbg.get_string('A',args[1]), args[2], ret))
+    return DBG_CONTINUE
+
+def hook_CryptDeriveKey(dbg, args, ret):
+    temp = int(dbg.read_process_memory(args[4], 4).encode("hex"), 16)
+    temp_hex_little = struct.pack('<L', temp)
+    print(temp_hex_little)
+
+    print "[*] %s API : CryptDeriveKey, KeygenAlg : %s,  Hash Object Handle : %x, Key Flag : %s, Key Handle : %s,  Return : 0x%x (Generate Key through encryption)" %(get_time(), dbg.get_algorithm(args[1]), args[2],  dbg.get_keyflag(args[3]), dbg.read_process_memory(args[4],4).encode("hex"),  ret)
+    f.write("[*] %s API : CryptDeriveKey, KeygenAlg : %s, Hash Object Handle : %x, Key Flag : %s, Key Handle : %s, Return : 0x%x (Generate Key through encryption) \n" %(get_time(), dbg.get_algorithm(args[1]), args[2],  dbg.get_keyflag(args[3]), dbg.read_process_memory(args[4],4).encode("hex"), ret))
+    return DBG_CONTINUE
+
+def hook_CryptGenKey(dbg, args, ret):
+    print "[*] %s API : CryptGenKey, KeygenAlg : %s, Key Flag : %s Return : 0x%x (Create Key Handle) " %(get_time(), dbg.get_algorithm(args[1]), dbg.get_keyflag(args[2]), ret)
+    f.write("[*] %s API : CryptGenKey, KeygenAlg : %s, Key Flag : %s Return : 0x%x (Create Key Handle) \n" %(get_time(), dbg.get_algorithm(args[1]), dbg.get_keyflag(args[2]), ret))
+    return DBG_CONTINUE 
+
+def hook_CryptEncrypt(dbg, args, ret):
+    DataLength = int(dbg.get_string('A', args[5]).encode("hex"))
+    print "[*] %s API : CryptEncrypt, Key Handle : %x, Hash Object Handle : %x, EncryptedData : %s, DataLength : %d, Last Encrypted? : %d,  Return : 0x%x (Encrypt ciphertext)" %(get_time(), args[0], args[1], dbg.get_string('A', args[4]), dbg.get_string('A', args[5]).encode("hex"), args[2], ret)
+    f.write("[*] %s API : CryptEncrypt, Key Handle : %x, Hash Object Handle : %x, EncryptedData : %s, DataLength : %d, Last Encrypted? : %d,  Return : 0x%x (Encrypt ciphertext)\n" %(get_time(), args[0], args[1], dbg.get_string('A', args[4]), dbg.get_string('A', args[5]).encode("hex"), args[2], ret))
+    return DBG_CONTINUE
+
+def hook_CryptDestroyKey(dbg, args, ret):
+    print "[*] %s API : CryptDestroyKey, Key Handle : %x, Return : 0x%x (Destroy Key) " %(get_time(), args[0], ret)
+    f.write("[*] %s API : CryptDestroyKey, Key Handle : %x, Return : 0x%x (Destroy Key)  \n" %(get_time(), args[0], ret))
+    return DBG_CONTINUE
+
+def hook_CryptDestroyHash(dbg, args, ret):
+    print "[*] %s API : CryptDestroyHash, Hash Handle : %x,  Return : 0x%x (Destroy Hash) " %(get_time(), args[0], ret)
+    f.write("[*] %s API : CryptDestroyHash, Hash Handle : %x, Return : 0x%x (Destroy Hash)  \n" %(get_time(), args[0], ret))
+    return DBG_CONTINUE
+
+def hook_CryptReleaseContext(dbg, args, ret):
+    print "[*] %s API : CryptReleaseContext, CSP Handle : %x, Return : 0x%x (CSP Key Container Handle) " %(get_time(), args[0], ret)
+    f.write("[*] %s API : CryptReleaseContext, CSP Handle : %x, Return : 0x%x (CSP Key Container Handle) \n" %(get_time(), args[0], ret))
+    return DBG_CONTINUE            
+
+def hook_CryptExportKey(dbg, args, ret):
+    print "[*] %s API : CryptExportKey, Key Handle : %x, Exported Key Handle : %x, Key Data : %s, Data Length : %d,  Return : 0x%x " %(get_time(), args[0], args[1], dbg.get_string('A',args[4]), args[5], ret)
+    f.write("[*] %s API : CryptExportKey, Key Handle : %x, Exported Key Handle : %x, Key Data : %s, Data Length : %d,  Return : 0x%x \n" %(get_time(), args[0], args[1], dbg.get_string('A',args[4]), args[5], ret))
+    return DBG_CONTINUE 
+
+def hook_CryptImportKey(dbg, args , ret):
+    print "[*] %s API : CryptImportKey, Key Data : %s, Data Length : %d, Import Key Handle : %x, Return : 0x%x " %(get_time(), dbg.read_process_memory(args[1],args[2]), args[2], dbg.read_process_memory(args[5],8), ret)
+    f.write("[*] %s API : CryptImportKey, Key Data : %s, Data Length : %d, Import Key Handle : %x, Return : 0x%x \n" %(get_time(), dbg.read_process_memory(args[1],args[2]), args[2], dbg.read_process_memory(args[5],8), ret))
+    return DBG_CONTINUE 
+    
+
+class crypthooks:
+    crypt_api_hook_list = {
+       "advapi32.dll" :
+            {
+                "CryptAcquireContextA" : {"args" : 5, "entry" : None, "exit" : hook_CryptAcquireContextA},
+                "CryptAcquireContextW" : {"args" : 5, "entry" : None, "exit" : hook_CryptAcquireContextW},
+                "CryptCreateHash" : {"args" : 5, "entry" : None, "exit" : hook_CryptCreateHash},
+                "CryptHashData" : {"args" : 4, "entry" : None, "exit" : hook_CryptHashData},
+                "CryptDeriveKey" : {"args" : 5, "entry" : None, "exit" : hook_CryptDeriveKey},
+                "CryptEncrypt" : {"args" : 7, "entry" : None, "exit" : hook_CryptEncrypt},
+                "CryptDestroyKey" : {"args" : 1, "entry" : None, "exit" : hook_CryptDestroyKey},
+                "CryptDestroyHash" : {"args" : 1, "entry" : None, "exit" : hook_CryptDestroyHash},
+                "CryptReleaseContext" : {"args" : 2, "entry" : None, "exit" : hook_CryptReleaseContext},
+                "CryptGenKey" : {"args" : 4, "entry" : None, "exit" : hook_CryptGenKey},
+                "CryptExportKey" : {"args" : 6, "entry" : None, "exit" : hook_CryptExportKey},
+                "CryptImportKey" : {"args" : 6, "entry" : None, "exit" : hook_CryptImportKey}
+
+            },
+       
+            
+       }
+       
+    hooked = {}
+    hookcont = None
+    dbg = None
+
+    def __init__ (self, dbg):
+        self.hookcont = hooking.hook_container()
+        self.hooked = {}
+        self.dbg = dbg
+        dbg.set_callback(LOAD_DLL_DEBUG_EVENT, self.handler_loadDLL) #DLL Load 이벤트 발생 시, 지정한 핸들러 루틴 수행하도록 콜백 함수 설정
+
+    # DLL 후킹 함수, 정해진 dll 과 API 들을 후킹
+    def hookByDLL(self, dll):
+        if not dll.name.lower() in self.hooked:
+            for key,value in self.crypt_api_hook_list.items():
+                if key.lower() == dll.name.lower():
+                    self.hooked[dll.name.lower()] = 1
+                    print("%s at %08x" % (dll.name, dll.base))
+                    for func,fctprops in value.items():
+                        entry = None; exit = None; args = 0
+                        if "entry" in fctprops and None != fctprops["entry"]:
+                            print("\tentry hook " + func)
+                            entry = fctprops["entry"]
+                        if "exit" in fctprops and None != fctprops["exit"]:
+                            print("\texit hook " + func)
+                            exit = fctprops["exit"]
+                        if "args" in fctprops and None != fctprops["args"]:
+                            args = fctprops["args"]
+                        if None != entry or None != exit:
+                            funcaddr = self.dbg.func_resolve(dll.name, func)
+                            self.hookcont.add(self.dbg, funcaddr, args, entry, exit)
+        else:
+            self.hooked[dll.name.lower()] += 1
+        return
+
+    # DLL Load 이벤트가 발생 할 때 처리되는 핸들러 루틴
+    @staticmethod
+    def handler_loadDLL(dbg):
+        global crypt
+        dbg.hide_debugger()
+        last_dll = dbg.get_system_dll(-1)
+        crypt.hookByDLL(last_dll)
+        return DBG_CONTINUE
+
+"""
+def getPid(dbg, process_name):
+    for(pid, name) in dbg.enumerate_processes():
+        if name.lower() == process_name.lower():
+            #print pid
+            return pid
+"""
+
+def main():
+    global crypt
+    global f
+    port = 12349
+    print("cryptmon")
+    """
+    serverSock = socket(AF_INET, SOCK_STREAM)
+    serverSock.bind(("", port))
+    serverSock.listen(1)
+    connectionSock, addr = serverSock.accept()
+    
+
+    fname = connectionSock.recv(1024)
+    print(fname)
+    """
+    
+    f = open("cryptmon", 'w')
+    #pid = 15520
+    #pid = int(sys.argv[1])
+    dbg = crypt_pydbg()
+    #dbg.load("C:\\Users\\SCHCSRC\\Desktop\\capstone\\regmon_test\\Project1.exe")
+    dbg.load("C:/Users/gmrdk/Desktop/Test/Crypt/Project1/Debug/Project1.exe")
+    #dbg.load("C:\Users\gmrdk\Desktop\Project2_v2.exe")
+    #dbg.load(fname)
+    #dbg.attach(getPid(dbg, "Project1.exe"))
+    #dbg.attach(int(pid))
+    crypt = crypthooks(dbg)
+    dbg.run()
+    f.close()
+
+    """finish = '1'
+    connectionSock.send(finish)"""
+    
+if __name__ == "__main__":
+    main()
